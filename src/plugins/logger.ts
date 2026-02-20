@@ -1,0 +1,38 @@
+import fp from "fastify-plugin";
+import type { FastifyPluginAsync } from "fastify";
+import { sleep, PrecisionTimer } from "../utils/timer.js";
+
+export const loggerPlugin: FastifyPluginAsync = fp(
+    async (app) => {
+        app.addHook("onRequest", async (req) => {
+            (req as any)._timer = new PrecisionTimer();
+        });
+
+        app.addHook("onResponse", async (req, reply) => {
+            const responseLatencyMs = (req as any)._timer?.elapsed();
+
+            req.log.info(
+                {
+                    method: req.method,
+                    url: req.url,
+                    statusCode: reply.statusCode,
+                    responseLatencyMs
+                },
+                "request completed"
+            );
+        });
+
+        app.addHook("onError", async (req, reply, err) => {
+            req.log.error(
+                {
+                    method: req.method,
+                    url: req.url,
+                    statusCode: reply.statusCode,
+                    err
+                },
+                "request failed"
+            );
+        });
+    },
+    { name: "logger", dependencies: ["request-id"] }
+);
