@@ -14,6 +14,10 @@ export const dbPlugin: FastifyPluginAsync = fp(
             ssl: "require",
             max: 10,
             idle_timeout: 20,
+            debug: app.config.LOG_LEVEL === "debug" && ((_connection, query, params, _types) => {
+                const q = query.replace(/\s+/g, " ").trim();
+                app.log.info({ query: q, params }, "Database query");
+            })
         });
 
         app.decorate("sql", sql);

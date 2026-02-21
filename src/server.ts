@@ -19,13 +19,17 @@ function loggerOptions() {
     const config = loadConfig(process.env);
 
     if (config.NODE_ENV === 'production') {
-        return true;
+        return {
+            level: config.LOG_LEVEL
+        };
+
     } else if (config.NODE_ENV === 'test') {
         return false;
     }
 
     // Otherwise, we are in development mode
     return {
+        level: config.LOG_LEVEL,
         transport: {
             target: "pino-pretty",
             options: {

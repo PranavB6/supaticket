@@ -16,6 +16,7 @@ export const configPlugin: FastifyPluginAsync = fp(
 
         app.addHook("onListen", async () => {
             app.log.info("Node environment is %s", app.config.NODE_ENV);
+            app.log.info("Log level is %s", app.config.LOG_LEVEL);
         });
 
     },

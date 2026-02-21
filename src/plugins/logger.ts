@@ -18,7 +18,7 @@ export const loggerPlugin: FastifyPluginAsync = fp(
                     statusCode: reply.statusCode,
                     responseLatencyMs
                 },
-                "request completed"
+                "Request completed"
             );
         });
 
@@ -30,7 +30,7 @@ export const loggerPlugin: FastifyPluginAsync = fp(
                     statusCode: reply.statusCode,
                     err
                 },
-                "request failed"
+                "Request failed"
             );
         });
     },
