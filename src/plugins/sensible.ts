@@ -6,7 +6,7 @@ import sensible from "@fastify/sensible";
 
 export const sensiblePlugin: FastifyPluginAsync = fp(
     async (app) => {
-        app.register((sensible));
+        app.register(sensible);
     },
     { name: "sensible" }
 );

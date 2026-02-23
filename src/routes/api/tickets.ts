@@ -35,34 +35,34 @@ const TicketListQuery = Type.Object({
 })
 
 const routes: FastifyPluginAsyncTypebox = async (app) => {
-    app.post("/tickets", {
-        schema: {
-            body: TicketCreateBody,
-        }
-    }, async (req, reply) => {
-        const ticket = await createTicket(app.sql, req.body);
-        req.log.info({ ticket }, "Ticket created");
+    app.post("/tickets",
+        {
+            schema: {
+                body: TicketCreateBody,
+            }
+        }, async (req, reply) => {
+            const ticket = await createTicket(app.sql, req.body);
+            req.log.info({ ticket }, "Ticket created");
 
-        return reply.status(201).send({ ticket });
-    })
+            return reply.status(201).send({ ticket });
+        })
 
-    app.get("/tickets/:ticketId", {
-        schema: {
-            params: TicketIdParams
-        }
-    }, async (req, reply) => {
-        const ticket = await getTicketById(app.sql, req.params.ticketId);
+    app.get("/tickets/:ticketId",
+        {
+            schema: {
+                params: TicketIdParams
+            }
+        }, async (req, reply) => {
+            const ticket = await getTicketById(app.sql, req.params.ticketId);
 
-        if (!ticket) {
-            return app.httpErrors.notFound("Ticket not found");
-        }
+            if (!ticket) {
+                return app.httpErrors.notFound("Ticket not found");
+            }
 
-        return reply.status(200).send({ ticket });
-    })
+            return reply.status(200).send({ ticket });
+        })
 
-    app.get(
-        // If plugin is registered with prefix "/tickets", change this to "/"
-        "/tickets",
+    app.get("/tickets",
         {
             schema: {
                 querystring: TicketListQuery,
