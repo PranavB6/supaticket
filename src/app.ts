@@ -10,7 +10,6 @@ import fastifyAutoload from "@fastify/autoload";
 import path, { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sensiblePlugin } from "./plugins/sensible.js";
-
 export function buildApp(opts: FastifyServerOptions = {}): FastifyInstance {
     const app = Fastify({
         // defaults

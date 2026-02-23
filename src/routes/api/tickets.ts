@@ -4,13 +4,17 @@ import { Type } from "@sinclair/typebox";
 import type { Static } from "@sinclair/typebox";
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import type postgres from "postgres";
+import { tx } from "../../db/tx.js";
 
-const TicketStatus = Type.Union([
-    Type.Literal("open"),
-    Type.Literal("in_progress"),
-    Type.Literal("resolved"),
-    Type.Literal("closed"),
-]);
+
+const TicketStatusEnum = {
+    OPEN: "open",
+    IN_PROGRESS: "in_progress",
+    RESOLVED: "resolved",
+    CLOSED: "closed",
+}
+
+const TicketStatus = Type.Enum(TicketStatusEnum);
 
 const TicketCreateBody = Type.Object(
     {
@@ -34,6 +38,32 @@ const TicketListQuery = Type.Object({
     offset: Type.Optional(Type.Integer({ minimum: 0 })),
 })
 
+const TicketPatchBody = Type.Object({
+    title: Type.Optional(Type.String({ minLength: 3, maxLength: 200 })),
+    description: Type.Optional(Type.String({ minLength: 1, maxLength: 10_000 })),
+    priority: Type.Optional(Type.Integer({ minimum: 1, maximum: 5 })),
+    status: Type.Optional(TicketStatus),
+    // When assignedTo is undefined, we don't update it, if it's null, we set it to null
+    assignedTo: Type.Optional(Type.Union([Type.String({ format: "uuid" }), Type.Null()])),
+},
+    { additionalProperties: false }
+)
+
+
+const TicketResponse = Type.Object({
+    id: Type.String({ format: "uuid" }),
+    title: Type.String(),
+    description: Type.String(),
+    priority: Type.Integer(),
+    status: TicketStatus,
+    assignedTo: Type.Optional(Type.String({ format: "uuid" })),
+    createdBy: Type.String({ format: "uuid" }),
+    createdAt: Type.String({ format: "date-time" }),
+    updatedAt: Type.String({ format: "date-time" }),
+    resolvedAt: Type.Optional(Type.String({ format: "date-time" })),
+})
+
+
 const routes: FastifyPluginAsyncTypebox = async (app) => {
     app.post("/tickets",
         {
@@ -53,11 +83,13 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
                 params: TicketIdParams
             }
         }, async (req, reply) => {
-            const ticket = await getTicketById(app.sql, req.params.ticketId);
+            const row = await getTicketById(app.sql, req.params.ticketId);
 
-            if (!ticket) {
+            if (!row) {
                 return app.httpErrors.notFound("Ticket not found");
             }
+
+            const ticket = mapTicket(row);
 
             return reply.status(200).send({ ticket });
         })
@@ -72,40 +104,50 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
         async (req) => {
             const { rows, limit, offset } = await listTickets(app.sql, req.query)
 
+            const tickets = rows.map(mapTicket);
+
             return {
-                tickets: rows,
+                tickets,
                 page: { limit, offset },
             };
         }
     )
-}
 
-const createTicket = async (sql: postgres.Sql, data: Static<typeof TicketCreateBody>) => {
-    const createdBy = "d5e4cd76-e6a6-4794-be0d-2963dd58fe78";
+    app.patch("/tickets/:ticketId", {
+        schema: {
+            params: TicketIdParams,
+            body: TicketPatchBody,
+        }
+    }, async (req) => {
+        req.log.info({ body: req.body }, "Body after validation");
 
-    const rows = await sql`
-        insert into tickets (created_by, title, description, priority)
-        values (
-            ${createdBy},
-            ${data.title},
-            ${data.description},
-            ${data.priority ?? 3}
-        )
-        returning *;
-    `;
+        const updatedTicket = await tx(app.sql, async (trx) => {
+            const existingRow = await getTicketById(trx, req.params.ticketId);
 
-    return rows[0];
-}
+            if (!existingRow) return null;
 
-const getTicketById = async (sql: postgres.Sql, ticketId: string) => {
-    const rows = await sql`
-        select *
-        from tickets
-        where id = ${ticketId}
-        limit 1;
-    `;
+            const existingTicket = mapTicket(existingRow);
 
-    return rows[0] ?? null;
+            const toUpdate = {
+                title: req.body.title ?? existingTicket.title,
+                description: req.body.description ?? existingTicket.description,
+                priority: req.body.priority ?? existingTicket.priority,
+                status: req.body.status ?? existingTicket.status,
+                // if assignedTo is undefined, we don't update it, if it's null, we set it to null
+                assignedTo: req.body.assignedTo === undefined ? existingTicket.assignedTo : req.body.assignedTo,
+            }
+
+            return await updateTicket(trx, req.params.ticketId, toUpdate);
+        })
+
+        if (!updatedTicket) {
+            return app.httpErrors.notFound("Ticket not found");
+        }
+
+        req.log.info({ ticket: updatedTicket }, "Ticket updated");
+
+        return { ticket: updatedTicket };
+    })
 }
 
 const listTickets = async (sql: postgres.Sql, options: Static<typeof TicketListQuery>) => {
@@ -141,6 +183,74 @@ const listTickets = async (sql: postgres.Sql, options: Static<typeof TicketListQ
     `;
 
     return { rows, limit, offset };;
+}
+
+const getTicketById = async (sql: postgres.Sql, ticketId: string) => {
+    const rows = await sql`
+        select *
+        from tickets
+        where id = ${ticketId}
+        limit 1;
+    `;
+
+    return rows[0] ?? null;
+}
+
+const createTicket = async (sql: postgres.Sql, data: Static<typeof TicketCreateBody>) => {
+    const createdBy = "d5e4cd76-e6a6-4794-be0d-2963dd58fe78";
+
+    const rows = await sql`
+        insert into tickets (created_by, title, description, priority)
+        values (
+            ${createdBy},
+            ${data.title},
+            ${data.description},
+            ${data.priority ?? 3}
+        )
+        returning *;
+    `;
+
+    return rows[0];
+}
+
+const TicketPatchFields = Type.KeyOf(TicketPatchBody);
+type TicketPatchData = { [key in Static<typeof TicketPatchFields>]: any };
+
+const updateTicket = async (sql: postgres.Sql, ticketId: string, data: TicketPatchData) => {
+    const rows = await sql`
+        update tickets
+        set
+            title = ${data.title},
+            description = ${data.description},
+            priority = ${data.priority},
+            status = ${data.status},
+            assigned_to = ${data.assignedTo},
+            resolved_at = case
+                when ${data.status} = ${TicketStatusEnum.RESOLVED} and resolved_at is null then now()
+                when ${data.status} <> ${TicketStatusEnum.RESOLVED} then null
+                else resolved_at
+            end,
+            updated_at = now()
+        where id = ${ticketId}
+        returning *;
+    `;
+
+    return rows;
+}
+
+const mapTicket = (ticket: any) => {
+    return {
+        id: ticket.id,
+        title: ticket.title,
+        description: ticket.description,
+        priority: ticket.priority,
+        status: ticket.status,
+        assignedTo: ticket.assigned_to,
+        createdBy: ticket.created_by,
+        createdAt: ticket.created_at,
+        updatedAt: ticket.updated_at,
+        resolvedAt: ticket.resolved_at,
+    };
 }
 
 export default routes;
