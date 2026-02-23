@@ -77,23 +77,6 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
             return reply.status(201).send({ ticket });
         })
 
-    app.get("/tickets/:ticketId",
-        {
-            schema: {
-                params: TicketIdParams
-            }
-        }, async (req, reply) => {
-            const row = await getTicketById(app.sql, req.params.ticketId);
-
-            if (!row) {
-                return app.httpErrors.notFound("Ticket not found");
-            }
-
-            const ticket = mapTicket(row);
-
-            return reply.status(200).send({ ticket });
-        })
-
     app.get("/tickets",
         {
             schema: {
@@ -112,6 +95,25 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
             };
         }
     )
+
+    app.get("/tickets/:ticketId",
+        {
+            schema: {
+                params: TicketIdParams
+            }
+        }, async (req, reply) => {
+            const row = await getTicketById(app.sql, req.params.ticketId);
+
+            if (!row) {
+                return app.httpErrors.notFound("Ticket not found");
+            }
+
+            const ticket = mapTicket(row);
+
+            return reply.status(200).send({ ticket });
+        })
+
+
 
     app.patch("/tickets/:ticketId", {
         schema: {
@@ -147,6 +149,20 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
         req.log.info({ ticket: updatedTicket }, "Ticket updated");
 
         return { ticket: updatedTicket };
+    })
+
+    app.delete("/tickets/:ticketId", {
+        schema: {
+            params: TicketIdParams,
+        }
+    }, async (req, reply) => {
+        const deleted = await deleteTicket(app.sql, req.params.ticketId);
+
+        if (!deleted) {
+            return app.httpErrors.notFound("Ticket not found");
+        }
+
+        return reply.status(204).send();
     })
 }
 
@@ -213,6 +229,8 @@ const createTicket = async (sql: postgres.Sql, data: Static<typeof TicketCreateB
     return rows[0];
 }
 
+// In order to update the ticket, we want to accept an object where all the updatable fields are MANDATORY
+// So we create a new type from the TicketPatchBody by taking the keys of the TicketPatchBody and making the values 'any'
 const TicketPatchFields = Type.KeyOf(TicketPatchBody);
 type TicketPatchData = { [key in Static<typeof TicketPatchFields>]: any };
 
@@ -236,6 +254,16 @@ const updateTicket = async (sql: postgres.Sql, ticketId: string, data: TicketPat
     `;
 
     return rows;
+}
+
+const deleteTicket = async (sql: postgres.Sql, ticketId: string) => {
+    const rows = await sql`
+        delete from tickets
+        where id = ${ticketId}
+        returning *;
+    `;
+
+    return rows[0] ?? null;
 }
 
 const mapTicket = (ticket: any) => {
