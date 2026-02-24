@@ -2,9 +2,7 @@ import { type FastifyPluginAsyncTypebox, type Static, Type } from "@fastify/type
 import type postgres from "postgres";
 import { tx } from "../../../db/tx.js";
 import { CreateTicketBodySchema, ListTicketsQuerySchema, TicketIdParamsSchema, PatchTicketBodySchema } from "../../../schemas/tickets.schema.js";
-import { type TicketResponse } from "../../../types/ticket-response.type.js";
-import { TicketStatus } from "../../../types/ticket-status.type.js";
-import { type TicketRow } from "../../../types/ticket-row.type.js";
+import { type TicketResponse, type TicketRow, TicketStatus } from "../../../types/tickets.type.js";
 
 
 const routes: FastifyPluginAsyncTypebox = async (app) => {

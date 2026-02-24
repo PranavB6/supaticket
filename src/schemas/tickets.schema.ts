@@ -1,6 +1,6 @@
 
 import { Type } from "@fastify/type-provider-typebox";
-import { TicketStatus } from "../types/ticket-status.type.js";
+import { TicketStatus } from "../types/tickets.type.js";
 
 export const TicketStatusSchema = Type.Enum(TicketStatus);
 
