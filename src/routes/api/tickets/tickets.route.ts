@@ -1,74 +1,17 @@
-import fp from "fastify-plugin";
-import type { FastifyBaseLogger } from "fastify";
-import { Type } from "@sinclair/typebox";
-import type { Static } from "@sinclair/typebox";
-import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
+import { type FastifyPluginAsyncTypebox, type Static, Type } from "@fastify/type-provider-typebox";
 import type postgres from "postgres";
-import { tx } from "../../db/tx.js";
-
-
-const TicketStatusEnum = {
-    OPEN: "open",
-    IN_PROGRESS: "in_progress",
-    RESOLVED: "resolved",
-    CLOSED: "closed",
-}
-
-const TicketStatus = Type.Enum(TicketStatusEnum);
-
-const TicketCreateBody = Type.Object(
-    {
-        title: Type.String({ minLength: 3, maxLength: 200 }),
-        description: Type.String({ minLength: 1, maxLength: 10_000 }),
-        priority: Type.Optional(Type.Integer({ minimum: 1, maximum: 5 })),
-    },
-    { additionalProperties: false }
-);
-
-const TicketIdParams = Type.Object(
-    { ticketId: Type.String({ format: "uuid" }) },
-    { additionalProperties: false }
-);
-
-const TicketListQuery = Type.Object({
-    status: Type.Optional(TicketStatus),
-    createdBy: Type.Optional(Type.String({ format: "uuid" })),
-    assignedTo: Type.Optional(Type.String({ format: "uuid" })),
-    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
-    offset: Type.Optional(Type.Integer({ minimum: 0 })),
-})
-
-const TicketPatchBody = Type.Object({
-    title: Type.Optional(Type.String({ minLength: 3, maxLength: 200 })),
-    description: Type.Optional(Type.String({ minLength: 1, maxLength: 10_000 })),
-    priority: Type.Optional(Type.Integer({ minimum: 1, maximum: 5 })),
-    status: Type.Optional(TicketStatus),
-    // When assignedTo is undefined, we don't update it, if it's null, we set it to null
-    assignedTo: Type.Optional(Type.Union([Type.String({ format: "uuid" }), Type.Null()])),
-},
-    { additionalProperties: false }
-)
-
-
-const TicketResponse = Type.Object({
-    id: Type.String({ format: "uuid" }),
-    title: Type.String(),
-    description: Type.String(),
-    priority: Type.Integer(),
-    status: TicketStatus,
-    assignedTo: Type.Optional(Type.String({ format: "uuid" })),
-    createdBy: Type.String({ format: "uuid" }),
-    createdAt: Type.String({ format: "date-time" }),
-    updatedAt: Type.String({ format: "date-time" }),
-    resolvedAt: Type.Optional(Type.String({ format: "date-time" })),
-})
+import { tx } from "../../../db/tx.js";
+import { CreateTicketBodySchema, ListTicketsQuerySchema, TicketIdParamsSchema, PatchTicketBodySchema } from "../../../schemas/tickets.schema.js";
+import { type TicketResponse } from "../../../types/ticket-response.type.js";
+import { TicketStatus } from "../../../types/ticket-status.type.js";
+import { type TicketRow } from "../../../types/ticket-row.type.js";
 
 
 const routes: FastifyPluginAsyncTypebox = async (app) => {
-    app.post("/tickets",
+    app.post("/",
         {
             schema: {
-                body: TicketCreateBody,
+                body: CreateTicketBodySchema,
             }
         }, async (req, reply) => {
             const ticket = await createTicket(app.sql, req.body);
@@ -77,11 +20,10 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
             return reply.status(201).send({ ticket });
         })
 
-    app.get("/tickets",
+    app.get("/",
         {
             schema: {
-                querystring: TicketListQuery,
-
+                querystring: ListTicketsQuerySchema,
             },
         },
         async (req) => {
@@ -96,10 +38,10 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
         }
     )
 
-    app.get("/tickets/:ticketId",
+    app.get("/:ticketId",
         {
             schema: {
-                params: TicketIdParams
+                params: TicketIdParamsSchema
             }
         }, async (req, reply) => {
             const row = await getTicketById(app.sql, req.params.ticketId);
@@ -115,10 +57,10 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
 
 
 
-    app.patch("/tickets/:ticketId", {
+    app.patch("/:ticketId", {
         schema: {
-            params: TicketIdParams,
-            body: TicketPatchBody,
+            params: TicketIdParamsSchema,
+            body: PatchTicketBodySchema,
         }
     }, async (req) => {
         req.log.info({ body: req.body }, "Body after validation");
@@ -151,9 +93,9 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
         return { ticket: updatedTicket };
     })
 
-    app.delete("/tickets/:ticketId", {
+    app.delete("/:ticketId", {
         schema: {
-            params: TicketIdParams,
+            params: TicketIdParamsSchema,
         }
     }, async (req, reply) => {
         const deleted = await deleteTicket(app.sql, req.params.ticketId);
@@ -166,7 +108,7 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
     })
 }
 
-const listTickets = async (sql: postgres.Sql, options: Static<typeof TicketListQuery>) => {
+const listTickets = async (sql: postgres.Sql, options: Static<typeof ListTicketsQuerySchema>) => {
 
     const limit = options.limit ?? 10;
     const offset = options.offset ?? 0;
@@ -189,7 +131,7 @@ const listTickets = async (sql: postgres.Sql, options: Static<typeof TicketListQ
         ? sql`where ${conditions.reduce((acc, curr) => sql`${acc} AND ${curr}`)}`
         : sql``;
 
-    const rows = await sql`
+    const rows = await sql<TicketRow[]>`
         select *
         from tickets
         ${where}
@@ -202,7 +144,7 @@ const listTickets = async (sql: postgres.Sql, options: Static<typeof TicketListQ
 }
 
 const getTicketById = async (sql: postgres.Sql, ticketId: string) => {
-    const rows = await sql`
+    const rows = await sql<TicketRow[]>`
         select *
         from tickets
         where id = ${ticketId}
@@ -212,10 +154,10 @@ const getTicketById = async (sql: postgres.Sql, ticketId: string) => {
     return rows[0] ?? null;
 }
 
-const createTicket = async (sql: postgres.Sql, data: Static<typeof TicketCreateBody>) => {
+const createTicket = async (sql: postgres.Sql, data: Static<typeof CreateTicketBodySchema>) => {
     const createdBy = "d5e4cd76-e6a6-4794-be0d-2963dd58fe78";
 
-    const rows = await sql`
+    const rows = await sql<TicketRow[]>`
         insert into tickets (created_by, title, description, priority)
         values (
             ${createdBy},
@@ -231,11 +173,11 @@ const createTicket = async (sql: postgres.Sql, data: Static<typeof TicketCreateB
 
 // In order to update the ticket, we want to accept an object where all the updatable fields are MANDATORY
 // So we create a new type from the TicketPatchBody by taking the keys of the TicketPatchBody and making the values 'any'
-const TicketPatchFields = Type.KeyOf(TicketPatchBody);
+const TicketPatchFields = Type.KeyOf(PatchTicketBodySchema);
 type TicketPatchData = { [key in Static<typeof TicketPatchFields>]: any };
 
 const updateTicket = async (sql: postgres.Sql, ticketId: string, data: TicketPatchData) => {
-    const rows = await sql`
+    const rows = await sql<TicketRow[]>`
         update tickets
         set
             title = ${data.title},
@@ -244,8 +186,8 @@ const updateTicket = async (sql: postgres.Sql, ticketId: string, data: TicketPat
             status = ${data.status},
             assigned_to = ${data.assignedTo},
             resolved_at = case
-                when ${data.status} = ${TicketStatusEnum.RESOLVED} and resolved_at is null then now()
-                when ${data.status} <> ${TicketStatusEnum.RESOLVED} then null
+                when ${data.status} = ${TicketStatus.RESOLVED} and resolved_at is null then now()
+                when ${data.status} <> ${TicketStatus.RESOLVED} then null
                 else resolved_at
             end,
             updated_at = now()
@@ -266,7 +208,8 @@ const deleteTicket = async (sql: postgres.Sql, ticketId: string) => {
     return rows[0] ?? null;
 }
 
-const mapTicket = (ticket: any) => {
+
+const mapTicket = (ticket: TicketRow): TicketResponse => {
     return {
         id: ticket.id,
         title: ticket.title,
