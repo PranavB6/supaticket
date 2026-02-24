@@ -1,6 +1,6 @@
 import { type FastifyPluginAsyncTypebox, type Static, Type } from "@fastify/type-provider-typebox";
 import type postgres from "postgres";
-import { tx } from "../../../db/tx.js";
+import { transaction } from "../../../db/transaction.js";
 import { CreateTicketBodySchema, ListTicketsQuerySchema, TicketIdParamsSchema, PatchTicketBodySchema } from "../../../schemas/tickets.schema.js";
 import { type TicketResponse, type TicketRow, TicketStatus } from "../../../types/tickets.type.js";
 
@@ -63,8 +63,8 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
     }, async (req) => {
         req.log.info({ body: req.body }, "Body after validation");
 
-        const updatedTicket = await tx(app.sql, async (trx) => {
-            const existingRow = await getTicketById(trx, req.params.ticketId);
+        const updatedTicket = await transaction(app.sql, async (tx) => {
+            const existingRow = await selectTicketForUpdate(tx, req.params.ticketId);
 
             if (!existingRow) return null;
 
@@ -79,7 +79,7 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
                 assignedTo: req.body.assignedTo === undefined ? existingTicket.assignedTo : req.body.assignedTo,
             }
 
-            return await updateTicket(trx, req.params.ticketId, toUpdate);
+            return await updateTicket(tx, req.params.ticketId, toUpdate);
         })
 
         if (!updatedTicket) {
@@ -141,8 +141,8 @@ const listTickets = async (sql: postgres.Sql, options: Static<typeof ListTickets
     return { rows, limit, offset };;
 }
 
-const getTicketById = async (sql: postgres.Sql, ticketId: string) => {
-    const rows = await sql<TicketRow[]>`
+const getTicketById = async (tx: postgres.Sql, ticketId: string) => {
+    const rows = await tx<TicketRow[]>`
         select *
         from tickets
         where id = ${ticketId}
@@ -152,10 +152,22 @@ const getTicketById = async (sql: postgres.Sql, ticketId: string) => {
     return rows[0] ?? null;
 }
 
-const createTicket = async (sql: postgres.Sql, data: Static<typeof CreateTicketBodySchema>) => {
+const selectTicketForUpdate = async (tx: postgres.Sql, ticketId: string) => {
+    const rows = await tx<TicketRow[]>`
+        select *
+        from tickets
+        where id = ${ticketId}
+        limit 1
+        for update;
+    `;
+
+    return rows[0] ?? null;
+}
+
+const createTicket = async (tx: postgres.Sql, data: Static<typeof CreateTicketBodySchema>) => {
     const createdBy = "d5e4cd76-e6a6-4794-be0d-2963dd58fe78";
 
-    const rows = await sql<TicketRow[]>`
+    const rows = await tx<TicketRow[]>`
         insert into tickets (created_by, title, description, priority)
         values (
             ${createdBy},
@@ -174,8 +186,8 @@ const createTicket = async (sql: postgres.Sql, data: Static<typeof CreateTicketB
 const TicketPatchFields = Type.KeyOf(PatchTicketBodySchema);
 type TicketPatchData = { [key in Static<typeof TicketPatchFields>]: any };
 
-const updateTicket = async (sql: postgres.Sql, ticketId: string, data: TicketPatchData) => {
-    const rows = await sql<TicketRow[]>`
+const updateTicket = async (tx: postgres.Sql, ticketId: string, data: TicketPatchData) => {
+    const rows = await tx<TicketRow[]>`
         update tickets
         set
             title = ${data.title},
@@ -196,8 +208,8 @@ const updateTicket = async (sql: postgres.Sql, ticketId: string, data: TicketPat
     return rows;
 }
 
-const deleteTicket = async (sql: postgres.Sql, ticketId: string) => {
-    const rows = await sql`
+const deleteTicket = async (tx: postgres.Sql, ticketId: string) => {
+    const rows = await tx`
         delete from tickets
         where id = ${ticketId}
         returning *;
