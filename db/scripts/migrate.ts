@@ -18,6 +18,15 @@ const shouldReset = process.argv.includes("--reset");
 const sql = postgres(TEST_DATABASE_URL, {
     ssl: false,
     max: 10,
+    onnotice: (notice) => {
+        // Supress the notice when trying to create the migration table if it already exists
+        if (notice.code === "42P07") {
+            console.log(notice.message);
+            return;
+        }
+
+        console.log(notice);
+    }
 });
 
 function listMigrationFiles(dir: string) {
@@ -42,12 +51,12 @@ async function resetDatabase() {
 
 async function ensureMigrationsTable() {
     await sql`
-    CREATE TABLE IF NOT EXISTS ${sql(MIGRATIONS_TABLE)} (
-      id TEXT PRIMARY KEY,
-      run_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      checksum TEXT NOT NULL
-    )
-  `;
+        CREATE TABLE IF NOT EXISTS ${sql(MIGRATIONS_TABLE)} (
+          id TEXT PRIMARY KEY,
+          run_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          checksum TEXT NOT NULL
+        )
+      `;
 }
 
 function sha256(input: string) {
@@ -80,7 +89,11 @@ async function run() {
         await resetDatabase();
     }
 
-    await ensureMigrationsTable();
+    try {
+        await ensureMigrationsTable();
+    } catch (error) {
+        return
+    }
 
     const files = listMigrationFiles(MIGRATIONS_DIR);
     if (files.length === 0) {
@@ -117,12 +130,23 @@ async function run() {
     console.log("All migrations applied.");
 }
 
-run()
-    .then(async () => {
-        await sql.end({ timeout: 5 });
-    })
-    .catch(async (err) => {
-        console.error(err);
-        await sql.end({ timeout: 5 });
-        process.exit(1);
-    });
+export default async function main() {
+    return await run()
+        .then(async () => {
+            await sql.end({ timeout: 5 });
+        })
+        .catch(async (err) => {
+            console.error(err);
+            await sql.end({ timeout: 5 });
+            process.exit(1);
+        });
+}
+
+
+// This block ONLY runs if you execute the file directly
+if (import.meta.url.startsWith('file:')) {
+    const modulePath = new URL(import.meta.url).pathname;
+    if (process.argv[1] === modulePath) {
+        main();
+    }
+}

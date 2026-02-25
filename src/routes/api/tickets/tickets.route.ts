@@ -167,13 +167,10 @@ const selectTicketForUpdate = async (tx: postgres.Sql, ticketId: string) => {
 }
 
 const createTicket = async (tx: postgres.Sql, data: Static<typeof CreateTicketBodySchema>) => {
-    const createdBy = "d5e4cd76-e6a6-4794-be0d-2963dd58fe78";
-    // const createdBy = "0661f0b3-cc58-4fad-ab77-c9b990fb1598";
-
     const rows = await tx<TicketRow[]>`
         insert into tickets (created_by, title, description, priority)
         values (
-            ${createdBy},
+            ${data.createdBy},
             ${data.title},
             ${data.description},
             ${data.priority ?? 3}

@@ -1,11 +1,15 @@
 import { describe, it, expect } from "vitest";
 import { buildTestApp } from "../../../../test/helpers/build-test-app.js";
+import { getTestDatabaseConnection } from "../../../helpers/db-connection.js";
+import { createUser } from "../../../helpers/factories.js";
 
-describe("POST /tickets", () => {
-    it("returns 201 if ticket is created successfully", async () => {
+describe("Tickets API", () => {
+    it("creates a ticket", async () => {
         const app = await buildTestApp();
-
         await app.ready();
+
+        const sql = getTestDatabaseConnection();
+        const userRow = await createUser(sql);
 
         const res = await app.inject({
             method: "POST",
@@ -14,6 +18,7 @@ describe("POST /tickets", () => {
                 title: "Test ticket",
                 description: "Test description",
                 priority: 3,
+                createdBy: userRow.id,
             }
         });
 
