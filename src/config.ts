@@ -5,6 +5,7 @@ const EnvSchema = z.object({
     HOST: z.string().default("0.0.0.0"),
     PORT: z.coerce.number().int().positive().default(8080),
     DATABASE_URL: z.string().min(1),
+    TEST_DATABASE_URL: z.string().min(1).optional(),
     LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info")
 });
 

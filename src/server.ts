@@ -1,8 +1,10 @@
 import { buildApp } from "./app.js";
 import closeWithGrace from 'close-with-grace'
 import { loadConfig } from "./config.js";
+import postgres from "postgres";
 
-const app = buildApp({ logger: loggerOptions() });
+const config = loadConfig(process.env);
+const app = buildApp({ logger: loggerOptions(), db: { sql: createDatabaseConnection() } });
 
 async function start() {
     try {
@@ -15,16 +17,16 @@ async function start() {
     }
 }
 
+/**
+ * Configure logger options based on environment.
+ * Since this function will only be called in development or production (server.ts is not called in test),
+ * we can safely ignore other environments
+ */
 function loggerOptions() {
-    const config = loadConfig(process.env);
-
     if (config.NODE_ENV === 'production') {
         return {
             level: config.LOG_LEVEL
         };
-
-    } else if (config.NODE_ENV === 'test') {
-        return false;
     }
 
     // Otherwise, we are in development mode
@@ -38,6 +40,18 @@ function loggerOptions() {
             },
         },
     };
+}
+
+function createDatabaseConnection() {
+    return postgres(config.DATABASE_URL, {
+        ssl: config.NODE_ENV === "production" ? "require" : false,
+        max: 10,
+        idle_timeout: 20,
+        debug: ((_connection, query, params, _types) => {
+            const q = query.replace(/\s+/g, " ").trim();
+            app.log.debug({ query: q, params }, "Database query");
+        })
+    });
 }
 
 closeWithGrace({ delay: 10_000 }, async function ({ signal, err, manual }) {

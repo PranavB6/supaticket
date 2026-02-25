@@ -1,8 +1,7 @@
 import fp from "fastify-plugin";
-import type { FastifyPluginAsync } from "fastify";
-import { sleep, PrecisionTimer } from "../utils/timer.js";
+import { PrecisionTimer } from "../utils/timer.js";
 
-export const loggerPlugin: FastifyPluginAsync = fp(
+export const loggerPlugin = fp(
     async (app) => {
         app.addHook("onRequest", async (req) => {
             (req as any)._timer = new PrecisionTimer();

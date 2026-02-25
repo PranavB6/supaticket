@@ -1,7 +1,7 @@
 import { type FastifyPluginAsyncTypebox, type Static, Type } from "@fastify/type-provider-typebox";
 import type postgres from "postgres";
-import { transaction } from "../../../db/transaction.js";
 import { CreateTicketBodySchema, ListTicketsQuerySchema, TicketIdParamsSchema, PatchTicketBodySchema } from "../../../schemas/tickets.schema.js";
+import { transaction } from "../../../db/transaction.js";
 import { type TicketResponse, type TicketRow, TicketStatus } from "../../../types/tickets.type.js";
 
 
@@ -27,7 +27,7 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
         async (req) => {
             const { rows, limit, offset } = await listTickets(app.sql, req.query)
 
-            const tickets = rows.map(mapTicket);
+            const tickets = rows.map(toTicketResponse);
 
             return {
                 tickets,
@@ -48,62 +48,64 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
                 return app.httpErrors.notFound("Ticket not found");
             }
 
-            const ticket = mapTicket(row);
+            const ticket = toTicketResponse(row);
 
             return reply.status(200).send({ ticket });
         })
 
 
 
-    app.patch("/:ticketId", {
-        schema: {
-            params: TicketIdParamsSchema,
-            body: PatchTicketBodySchema,
-        }
-    }, async (req) => {
-        req.log.info({ body: req.body }, "Body after validation");
+    app.patch("/:ticketId",
+        {
+            schema: {
+                params: TicketIdParamsSchema,
+                body: PatchTicketBodySchema,
+            }
+        }, async (req) => {
+            req.log.info({ body: req.body }, "Body after validation");
 
-        const updatedTicket = await transaction(app.sql, async (tx) => {
-            const existingRow = await selectTicketForUpdate(tx, req.params.ticketId);
+            const updatedTicket = await transaction(app.sql, async (tx) => {
+                const existingRow = await selectTicketForUpdate(tx, req.params.ticketId);
 
-            if (!existingRow) return null;
+                if (!existingRow) return null;
 
-            const existingTicket = mapTicket(existingRow);
+                const existingTicket = toTicketResponse(existingRow);
 
-            const toUpdate = {
-                title: req.body.title ?? existingTicket.title,
-                description: req.body.description ?? existingTicket.description,
-                priority: req.body.priority ?? existingTicket.priority,
-                status: req.body.status ?? existingTicket.status,
-                // if assignedTo is undefined, we don't update it, if it's null, we set it to null
-                assignedTo: req.body.assignedTo === undefined ? existingTicket.assignedTo : req.body.assignedTo,
+                const stagedTicket = {
+                    title: req.body.title ?? existingTicket.title,
+                    description: req.body.description ?? existingTicket.description,
+                    priority: req.body.priority ?? existingTicket.priority,
+                    status: req.body.status ?? existingTicket.status,
+                    // if assignedTo is undefined, we don't update it, if it's null, we set it to null
+                    assignedTo: req.body.assignedTo === undefined ? existingTicket.assignedTo : req.body.assignedTo,
+                }
+
+                return await updateTicket(tx, req.params.ticketId, stagedTicket);
+            })
+
+            if (!updatedTicket) {
+                return app.httpErrors.notFound("Ticket not found");
             }
 
-            return await updateTicket(tx, req.params.ticketId, toUpdate);
+            req.log.info({ ticket: updatedTicket }, "Ticket updated");
+
+            return { ticket: updatedTicket };
         })
 
-        if (!updatedTicket) {
-            return app.httpErrors.notFound("Ticket not found");
-        }
+    app.delete("/:ticketId",
+        {
+            schema: {
+                params: TicketIdParamsSchema,
+            }
+        }, async (req, reply) => {
+            const deleted = await deleteTicket(app.sql, req.params.ticketId);
 
-        req.log.info({ ticket: updatedTicket }, "Ticket updated");
+            if (!deleted) {
+                return app.httpErrors.notFound("Ticket not found");
+            }
 
-        return { ticket: updatedTicket };
-    })
-
-    app.delete("/:ticketId", {
-        schema: {
-            params: TicketIdParamsSchema,
-        }
-    }, async (req, reply) => {
-        const deleted = await deleteTicket(app.sql, req.params.ticketId);
-
-        if (!deleted) {
-            return app.httpErrors.notFound("Ticket not found");
-        }
-
-        return reply.status(204).send();
-    })
+            return reply.status(204).send();
+        })
 }
 
 const listTickets = async (sql: postgres.Sql, options: Static<typeof ListTicketsQuerySchema>) => {
@@ -166,6 +168,7 @@ const selectTicketForUpdate = async (tx: postgres.Sql, ticketId: string) => {
 
 const createTicket = async (tx: postgres.Sql, data: Static<typeof CreateTicketBodySchema>) => {
     const createdBy = "d5e4cd76-e6a6-4794-be0d-2963dd58fe78";
+    // const createdBy = "0661f0b3-cc58-4fad-ab77-c9b990fb1598";
 
     const rows = await tx<TicketRow[]>`
         insert into tickets (created_by, title, description, priority)
@@ -219,7 +222,7 @@ const deleteTicket = async (tx: postgres.Sql, ticketId: string) => {
 }
 
 
-const mapTicket = (ticket: TicketRow): TicketResponse => {
+const toTicketResponse = (ticket: TicketRow): TicketResponse => {
     return {
         id: ticket.id,
         title: ticket.title,

@@ -1,5 +1,4 @@
 import fp from "fastify-plugin";
-import type { FastifyPluginAsync } from "fastify";
 
 declare module "fastify" {
     interface FastifyRequest {
@@ -7,7 +6,7 @@ declare module "fastify" {
     }
 }
 
-export const requestIdPlugin: FastifyPluginAsync = fp(
+export const requestIdPlugin = fp(
     async (app) => {
         app.addHook("onRequest", async (req, reply) => {
 

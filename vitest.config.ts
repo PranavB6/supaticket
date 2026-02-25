@@ -2,7 +2,12 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
     test: {
-        // This tells Vitest where your tests are
+        server: {
+            deps: {
+                inline: ['@fastify/autoload']
+            }
+        },
         include: ['test/**/*.test.ts'],
-    },
+        setupFiles: ['./test/vitest.setup.ts'],
+    }
 });

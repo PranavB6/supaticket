@@ -7,10 +7,16 @@ import { swaggerPlugin } from "./plugins/swagger.js";
 import { configPlugin } from "./plugins/config.js";
 import { dbPlugin } from "./plugins/db.js";
 import fastifyAutoload from "@fastify/autoload";
-import path, { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sensiblePlugin } from "./plugins/sensible.js";
-export function buildApp(opts: FastifyServerOptions = {}): FastifyInstance {
+import type { DbPluginOptions } from "./plugins/db.js";
+
+interface AppOptions extends FastifyServerOptions {
+    db?: DbPluginOptions;
+}
+
+
+export function buildApp(opts: AppOptions = {}): FastifyInstance {
     const app = Fastify({
         // defaults
         logger: true,
@@ -36,14 +42,16 @@ export function buildApp(opts: FastifyServerOptions = {}): FastifyInstance {
     // register plugins
     app.register(sensiblePlugin);
     app.register(configPlugin);
-    app.register(dbPlugin);
+    app.register(dbPlugin, opts.db ?? {});
     app.register(requestIdPlugin)
     app.register(loggerPlugin)
     app.register(swaggerPlugin);
 
     // autoload routes
+    const routesDir = fileURLToPath(new URL("./routes", import.meta.url));
+    app.log.debug({ routesDir }, "Autoloading routes");
     app.register(fastifyAutoload, {
-        dir: path.join(import.meta.dirname, "routes"),
+        dir: routesDir,
         dirNameRoutePrefix: true,
     });
 

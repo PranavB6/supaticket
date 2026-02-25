@@ -48,7 +48,7 @@ export const PatchTicketBodySchema = Type.Object({
 // --------------------
 //  Responses
 // --------------------
-export const TicketSchema = Type.Object({
+export const TicketResponseSchema = Type.Object({
     id: Type.String({ format: "uuid" }),
     title: Type.String(),
     description: Type.String(),

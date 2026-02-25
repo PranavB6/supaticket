@@ -1,5 +1,5 @@
 import type { Static } from "@fastify/type-provider-typebox";
-import { TicketSchema } from "../schemas/tickets.schema.js";
+import { TicketResponseSchema } from "../schemas/tickets.schema.js";
 
 export enum TicketStatus {
     OPEN = "open",
@@ -21,4 +21,4 @@ export type TicketRow = {
     resolved_at: string | null;
 }
 
-export type TicketResponse = Static<typeof TicketSchema>;
+export type TicketResponse = Static<typeof TicketResponseSchema>;
