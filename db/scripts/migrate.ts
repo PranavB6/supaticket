@@ -14,6 +14,7 @@ if (!TEST_DATABASE_URL) {
 const MIGRATIONS_DIR = path.join(process.cwd(), "db/migrations");
 const MIGRATIONS_TABLE = "new_migrations";
 const shouldReset = process.argv.includes("--reset");
+const isVerbose = process.argv.includes("--verbose") || process.argv.includes("-v");
 
 const sql = postgres(TEST_DATABASE_URL, {
     ssl: false,
@@ -21,7 +22,9 @@ const sql = postgres(TEST_DATABASE_URL, {
     onnotice: (notice) => {
         // Supress the notice when trying to create the migration table if it already exists
         if (notice.code === "42P07") {
-            console.log(notice.message);
+            if (isVerbose) {
+                console.log(notice.message);
+            }
             return;
         }
 
@@ -101,6 +104,7 @@ async function run() {
         return;
     }
 
+    let appliedCount = 0;
     for (const file of files) {
         const fullPath = path.join(MIGRATIONS_DIR, file);
         const contents = fs.readFileSync(fullPath, "utf8");
@@ -109,11 +113,15 @@ async function run() {
         await verifyChecksumIfExists(file, checksum);
 
         if (await hasRun(file)) {
-            console.log(`✓ Skipping ${file}`);
+            if (isVerbose) {
+                console.log(`✓ Skipping ${file}`);
+            }
             continue;
         }
 
-        console.log(`→ Running ${file}`);
+        if (isVerbose) {
+            console.log(`→ Running ${file}`);
+        }
 
         await sql.begin(async (trx) => {
             const tx = trx as unknown as postgres.Sql;
@@ -124,10 +132,17 @@ async function run() {
       `;
         });
 
-        console.log(`✓ Completed ${file}`);
+        appliedCount++;
+        if (isVerbose) {
+            console.log(`✓ Completed ${file}`);
+        }
     }
 
-    console.log("All migrations applied.");
+    if (appliedCount > 0) {
+        console.log(`Successfully applied ${appliedCount} migration${appliedCount === 1 ? "" : "s"}.`);
+    } else {
+        console.log("All migrations already applied.");
+    }
 }
 
 export default async function main() {
