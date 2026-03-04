@@ -3,6 +3,7 @@ import type postgres from "postgres";
 import { CreateTicketBodySchema, ListTicketsQuerySchema, TicketIdParamsSchema, PatchTicketBodySchema } from "../../../schemas/tickets.schema.js";
 import { transaction } from "../../../db/transaction.js";
 import { type TicketResponse, type TicketRow, TicketStatus } from "../../../types/tickets.type.js";
+import assert from "node:assert";
 
 
 const routes: FastifyPluginAsyncTypebox = async (app) => {
@@ -12,7 +13,25 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
                 body: CreateTicketBodySchema,
             }
         }, async (req, reply) => {
-            const ticket = await createTicket(app.sql, req.body);
+
+            const ticket = await transaction(app.sql, async (tx) => {
+
+                const ticket = await createTicket(tx, req.body);
+
+                assert(ticket != null, "Create ticket must return a row");
+
+
+                await createTicketEvent(tx, {
+                    ticketId: ticket.id,
+                    actorId: req.body.createdBy,
+                    type: 'ticket.created',
+                    requestId: req.id,
+                    payload: req.body
+                });
+
+                return ticket;
+            })
+
             req.log.info({ ticket }, "Ticket created");
 
             return reply.status(201).send({ ticket });
@@ -36,7 +55,7 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
         }
     )
 
-    app.get("/:ticketId",
+    app.get("/:ticketId/:updatedBy",
         {
             schema: {
                 params: TicketIdParamsSchema
@@ -55,7 +74,7 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
 
 
 
-    app.patch("/:ticketId",
+    app.patch("/:ticketId/:updatedBy",
         {
             schema: {
                 params: TicketIdParamsSchema,
@@ -80,7 +99,23 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
                     assignedTo: req.body.assignedTo === undefined ? existingTicket.assignedTo : req.body.assignedTo,
                 }
 
-                return await updateTicket(tx, req.params.ticketId, stagedTicket);
+                const ticketDiff = calculateTicketDifference(existingTicket, stagedTicket);
+
+                const updatedTicket = await updateTicket(tx, req.params.ticketId, stagedTicket);
+
+                assert(updatedTicket, "Update ticket must return a row");
+
+                await createTicketEvent(tx, {
+                    ticketId: updatedTicket.id,
+                    actorId: req.params.updatedBy,
+                    type: 'ticket.updated',
+                    requestId: req.id,
+                    payload: {
+                        diff: ticketDiff,
+                    }
+                });
+
+                return updatedTicket;
             })
 
             if (!updatedTicket) {
@@ -92,13 +127,31 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
             return { ticket: updatedTicket };
         })
 
-    app.delete("/:ticketId",
+    app.delete("/:ticketId/:updatedBy",
         {
             schema: {
                 params: TicketIdParamsSchema,
             }
         }, async (req, reply) => {
-            const deleted = await deleteTicket(app.sql, req.params.ticketId);
+            const deleted = await transaction(app.sql, async (tx) => {
+                const existingTicket = await selectTicketForUpdate(tx, req.params.ticketId);
+
+                if (!existingTicket) {
+                    return null;
+                }
+
+                await deleteTicket(tx, req.params.ticketId);
+
+                await createTicketEvent(tx, {
+                    ticketId: existingTicket.id,
+                    actorId: req.params.updatedBy,
+                    type: 'ticket.deleted',
+                    requestId: req.id,
+                    payload: {}
+                });
+
+                return existingTicket;
+            });
 
             if (!deleted) {
                 return app.httpErrors.notFound("Ticket not found");
@@ -181,12 +234,17 @@ const createTicket = async (tx: postgres.Sql, data: Static<typeof CreateTicketBo
     return rows[0];
 }
 
-// In order to update the ticket, we want to accept an object where all the updatable fields are MANDATORY
-// So we create a new type from the TicketPatchBody by taking the keys of the TicketPatchBody and making the values 'any'
-const TicketPatchFields = Type.KeyOf(PatchTicketBodySchema);
-type TicketPatchData = { [key in Static<typeof TicketPatchFields>]: any };
 
-const updateTicket = async (tx: postgres.Sql, ticketId: string, data: TicketPatchData) => {
+
+interface TicketUpdateData {
+    title: string;
+    description: string;
+    priority: number;
+    status: TicketStatus;
+    assignedTo: string | null;
+}
+
+const updateTicket = async (tx: postgres.Sql, ticketId: string, data: TicketUpdateData) => {
     const rows = await tx<TicketRow[]>`
         update tickets
         set
@@ -205,7 +263,7 @@ const updateTicket = async (tx: postgres.Sql, ticketId: string, data: TicketPatc
         returning *;
     `;
 
-    return rows;
+    return rows[0];
 }
 
 const deleteTicket = async (tx: postgres.Sql, ticketId: string) => {
@@ -218,6 +276,31 @@ const deleteTicket = async (tx: postgres.Sql, ticketId: string) => {
     return rows[0] ?? null;
 }
 
+
+const createTicketEvent = async (tx: postgres.Sql, event: { ticketId: string, actorId: string, type: string, requestId: string, payload: any }) => {
+    const rows = await tx`
+        insert into ticket_events (ticket_id, actor_id, type, request_id, payload)
+        values (${event.ticketId}, ${event.actorId}, ${event.type}, ${event.requestId}, ${event.payload})
+        returning *;
+    `;
+
+    return rows[0];
+}
+
+const calculateTicketDifference = (oldTicket: any, newTicket: any) => {
+    const changed: Record<string, { from: any; to: any }> = {};
+
+    for (const key of Object.keys(newTicket)) {
+        const from = oldTicket[key];
+        const to = newTicket[key];
+
+        if (from !== to) {
+            changed[key] = { from, to };
+        }
+    }
+
+    return changed;
+}
 
 const toTicketResponse = (ticket: TicketRow): TicketResponse => {
     return {

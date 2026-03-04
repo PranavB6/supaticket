@@ -8,7 +8,7 @@ export const TicketStatusSchema = Type.Enum(TicketStatus);
 //  Params
 // --------------------
 export const TicketIdParamsSchema = Type.Object(
-    { ticketId: Type.String({ format: "uuid" }) },
+    { ticketId: Type.String({ format: "uuid" }), updatedBy: Type.String({ format: "uuid" }) },
     { additionalProperties: false }
 );
 
