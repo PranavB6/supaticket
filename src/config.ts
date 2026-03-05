@@ -5,8 +5,11 @@ const EnvSchema = z.object({
     HOST: z.string().default("0.0.0.0"),
     PORT: z.coerce.number().int().positive().default(8080),
     DATABASE_URL: z.string().min(1),
+    COOKIE_SECRET: z.string().min(1),
+    COOKIE_SECRET_FALLBACK: z.string().min(1).default("secret-fallback-key"),
+    SESSION_MAX_AGE: z.coerce.number().int().positive().default(60 * 60 * 24 * 7),
+    LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
     TEST_DATABASE_URL: z.string().min(1).optional(),
-    LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info")
 });
 
 export type AppConfig = z.infer<typeof EnvSchema>;

@@ -9,7 +9,9 @@ import { dbPlugin } from "./plugins/db.js";
 import fastifyAutoload from "@fastify/autoload";
 import { fileURLToPath } from "node:url";
 import { sensiblePlugin } from "./plugins/sensible.js";
+import { cookiesPlugin } from "./plugins/cookies.js";
 import type { DbPluginOptions } from "./plugins/db.js";
+import { authPlugin } from "./plugins/auth.js";
 
 interface AppOptions extends FastifyServerOptions {
     db?: DbPluginOptions;
@@ -45,6 +47,8 @@ export function buildApp(opts: AppOptions = {}): FastifyInstance {
     app.register(dbPlugin, opts.db ?? {});
     app.register(requestIdPlugin)
     app.register(loggerPlugin)
+    app.register(cookiesPlugin);
+    app.register(authPlugin);
     app.register(swaggerPlugin);
 
     // autoload routes

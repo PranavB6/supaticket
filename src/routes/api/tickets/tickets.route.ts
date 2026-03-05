@@ -18,7 +18,7 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
 
                 const ticket = await createTicket(tx, req.body);
 
-                assert(ticket != null, "Create ticket must return a row");
+                assert.ok(ticket, "Create ticket must return a row");
 
 
                 await createTicketEvent(tx, {
@@ -39,6 +39,7 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
 
     app.get("/",
         {
+            preHandler: [app.requireAuth],
             schema: {
                 querystring: ListTicketsQuerySchema,
             },
@@ -55,8 +56,9 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
         }
     )
 
-    app.get("/:ticketId/:updatedBy",
+    app.get("/:ticketId",
         {
+            preHandler: [app.requireAuth],
             schema: {
                 params: TicketIdParamsSchema
             }
@@ -64,7 +66,7 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
             const row = await getTicketById(app.sql, req.params.ticketId);
 
             if (!row) {
-                return app.httpErrors.notFound("Ticket not found");
+                throw app.httpErrors.notFound("Ticket not found");
             }
 
             const ticket = toTicketResponse(row);
@@ -74,13 +76,17 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
 
 
 
-    app.patch("/:ticketId/:updatedBy",
+    app.patch("/:ticketId",
         {
+            preHandler: [app.requireAuth],
             schema: {
                 params: TicketIdParamsSchema,
                 body: PatchTicketBodySchema,
             }
         }, async (req) => {
+            const user = req.user;
+            assert.ok(user, "Require auth must set user");
+
             req.log.info({ body: req.body }, "Body after validation");
 
             const updatedTicket = await transaction(app.sql, async (tx) => {
@@ -103,11 +109,11 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
 
                 const updatedTicket = await updateTicket(tx, req.params.ticketId, stagedTicket);
 
-                assert(updatedTicket, "Update ticket must return a row");
+                assert.ok(updatedTicket, "Update ticket must return a row");
 
                 await createTicketEvent(tx, {
                     ticketId: updatedTicket.id,
-                    actorId: req.params.updatedBy,
+                    actorId: user.id,
                     type: 'ticket.updated',
                     requestId: req.id,
                     payload: {
@@ -119,7 +125,7 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
             })
 
             if (!updatedTicket) {
-                return app.httpErrors.notFound("Ticket not found");
+                throw app.httpErrors.notFound("Ticket not found");
             }
 
             req.log.info({ ticket: updatedTicket }, "Ticket updated");
@@ -127,12 +133,16 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
             return { ticket: updatedTicket };
         })
 
-    app.delete("/:ticketId/:updatedBy",
+    app.delete("/:ticketId",
         {
+            preHandler: [app.requireAuth],
             schema: {
                 params: TicketIdParamsSchema,
             }
         }, async (req, reply) => {
+            const user = req.user;
+            assert.ok(user, "Require auth must set user");
+
             const deleted = await transaction(app.sql, async (tx) => {
                 const existingTicket = await selectTicketForUpdate(tx, req.params.ticketId);
 
@@ -144,7 +154,7 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
 
                 await createTicketEvent(tx, {
                     ticketId: existingTicket.id,
-                    actorId: req.params.updatedBy,
+                    actorId: user.id,
                     type: 'ticket.deleted',
                     requestId: req.id,
                     payload: {}
@@ -154,14 +164,14 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
             });
 
             if (!deleted) {
-                return app.httpErrors.notFound("Ticket not found");
+                throw app.httpErrors.notFound("Ticket not found");
             }
 
             return reply.status(204).send();
         })
 }
 
-const listTickets = async (sql: postgres.Sql, options: Static<typeof ListTicketsQuerySchema>) => {
+const listTickets = async (tx: postgres.Sql, options: Static<typeof ListTicketsQuerySchema>) => {
 
     const limit = options.limit ?? 10;
     const offset = options.offset ?? 0;
@@ -169,22 +179,22 @@ const listTickets = async (sql: postgres.Sql, options: Static<typeof ListTickets
     const conditions: any[] = [];
 
     if (options.status) {
-        conditions.push(sql`status = ${options.status}`);
+        conditions.push(tx`status = ${options.status}`);
     }
 
     if (options.createdBy) {
-        conditions.push(sql`created_by = ${options.createdBy}`);
+        conditions.push(tx`created_by = ${options.createdBy}`);
     }
 
     if (options.assignedTo) {
-        conditions.push(sql`assigned_to = ${options.assignedTo}`);
+        conditions.push(tx`assigned_to = ${options.assignedTo}`);
     }
 
     const where = conditions.length > 0
-        ? sql`where ${conditions.reduce((acc, curr) => sql`${acc} AND ${curr}`)}`
-        : sql``;
+        ? tx`where ${conditions.reduce((acc, curr) => tx`${acc} AND ${curr}`)}`
+        : tx``;
 
-    const rows = await sql<TicketRow[]>`
+    const rows = await tx<TicketRow[]>`
         select *
         from tickets
         ${where}
