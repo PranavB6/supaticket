@@ -25,28 +25,16 @@ export const authPlugin = fp(
 
         app.addHook("preHandler", async (req) => {
             const rawSessionCookie = req.cookies[SESSION_ID_COOKIE_KEY];
-            if (!rawSessionCookie) {
-                app.log.warn("No session cookie found");
-                return;
-            };
+            if (!rawSessionCookie) return;
 
             const sessionCookie = req.unsignCookie(rawSessionCookie);
-            if (!sessionCookie) {
-                app.log.warn("Invalid session cookie");
-                return;
-            };
+            if (!sessionCookie) return;
 
             const sessionId = sessionCookie.value;
-            if (!sessionId) {
-                app.log.warn("No session ID found");
-                return;
-            };
+            if (!sessionId) return;
 
             const row = await getUserBySessionId(app.sql, sessionId);
-            if (!row) {
-                app.log.warn("No user found for session ID");
-                return;
-            };
+            if (!row) return;
 
             req.user = {
                 id: row.user_id,
