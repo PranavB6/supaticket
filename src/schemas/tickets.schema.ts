@@ -30,7 +30,6 @@ export const CreateTicketBodySchema = Type.Object(
         title: Type.String({ minLength: 3, maxLength: 200 }),
         description: Type.String({ minLength: 1, maxLength: 10_000 }),
         priority: Type.Optional(Type.Integer({ minimum: 1, maximum: 5 })),
-        createdBy: Type.String({ format: "uuid" }),
     },
     { additionalProperties: false }
 );

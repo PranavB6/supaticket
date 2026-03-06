@@ -40,7 +40,7 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
 
         reply.setCookie(SESSION_ID_COOKIE_KEY, sessionId);
 
-        return reply.status(201).send({ user });
+        return reply.status(201).send(user);
     })
 
     app.post("/login", {
@@ -66,7 +66,9 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
 
         reply.setCookie(SESSION_ID_COOKIE_KEY, sessionRow.id);
 
-        return { user: toUserResponse(userRow) };
+        const user = toUserResponse(userRow);
+
+        return user;
     })
 
     app.post("/logout", async (req, reply) => {

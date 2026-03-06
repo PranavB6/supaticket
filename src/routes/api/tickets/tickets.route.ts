@@ -11,19 +11,27 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
         {
             schema: {
                 body: CreateTicketBodySchema,
-            }
+            },
+            preHandler: [app.requireAuth],
         }, async (req, reply) => {
+            const user = req.user;
+            assert.ok(user, "Require auth must set user");
 
-            const ticket = await transaction(app.sql, async (tx) => {
+            const ticketRow = await transaction(app.sql, async (tx) => {
 
-                const ticket = await createTicket(tx, req.body);
+                const ticket = await createTicket(tx, {
+                    title: req.body.title,
+                    description: req.body.description,
+                    priority: req.body.priority ?? 3,
+                    createdBy: user.id
+                });
 
                 assert.ok(ticket, "Create ticket must return a row");
 
 
                 await createTicketEvent(tx, {
                     ticketId: ticket.id,
-                    actorId: req.body.createdBy,
+                    actorId: user.id,
                     type: 'ticket.created',
                     requestId: req.id,
                     payload: req.body
@@ -32,9 +40,11 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
                 return ticket;
             })
 
+            const ticket = toTicketResponse(ticketRow);
+
             req.log.info({ ticket }, "Ticket created");
 
-            return reply.status(201).send({ ticket });
+            return reply.status(201).send(ticket);
         })
 
     app.get("/",
@@ -58,10 +68,10 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
 
     app.get("/:ticketId",
         {
-            preHandler: [app.requireAuth],
             schema: {
                 params: TicketIdParamsSchema
-            }
+            },
+            preHandler: [app.requireAuth],
         }, async (req, reply) => {
             const row = await getTicketById(app.sql, req.params.ticketId);
 
@@ -71,7 +81,7 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
 
             const ticket = toTicketResponse(row);
 
-            return reply.status(200).send({ ticket });
+            return reply.status(200).send(ticket);
         })
 
 
@@ -128,9 +138,11 @@ const routes: FastifyPluginAsyncTypebox = async (app) => {
                 throw app.httpErrors.notFound("Ticket not found");
             }
 
-            req.log.info({ ticket: updatedTicket }, "Ticket updated");
+            const ticketResponse = toTicketResponse(updatedTicket);
 
-            return { ticket: updatedTicket };
+            req.log.info({ ticket: ticketResponse }, "Ticket updated");
+
+            return ticketResponse;
         })
 
     app.delete("/:ticketId",
@@ -229,14 +241,21 @@ const selectTicketForUpdate = async (tx: postgres.Sql, ticketId: string) => {
     return rows[0] ?? null;
 }
 
-const createTicket = async (tx: postgres.Sql, data: Static<typeof CreateTicketBodySchema>) => {
+type CreateTicketData = {
+    createdBy: string;
+    title: string;
+    description: string;
+    priority: number;
+}
+
+const createTicket = async (tx: postgres.Sql, data: CreateTicketData) => {
     const rows = await tx<TicketRow[]>`
         insert into tickets (created_by, title, description, priority)
         values (
             ${data.createdBy},
             ${data.title},
             ${data.description},
-            ${data.priority ?? 3}
+            ${data.priority}
         )
         returning *;
     `;

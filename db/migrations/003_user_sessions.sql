@@ -6,7 +6,7 @@ create table if not exists user_sessions (
     created_at timestamptz not null default now(),
     last_seen_at timestamptz not null default now(),
     expires_at timestamptz not null,
-    revoked_at timestamptz,
+    revoked_at timestamptz
 
     -- ip inet,
     -- user_agent text

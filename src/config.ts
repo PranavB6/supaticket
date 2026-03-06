@@ -10,6 +10,7 @@ const EnvSchema = z.object({
     SESSION_MAX_AGE: z.coerce.number().int().positive().default(60 * 60 * 24 * 7),
     LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
     TEST_DATABASE_URL: z.string().min(1).optional(),
+    TEST_DEBUG_LOGS: z.stringbool().default(false),
 });
 
 export type AppConfig = z.infer<typeof EnvSchema>;

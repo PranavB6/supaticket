@@ -1,12 +1,22 @@
+import type { FastifyRequest } from "fastify";
 import fp from "fastify-plugin";
 import type postgres from "postgres";
 
+interface AuthenticatedUser {
+    id: string;
+    email: string;
+}
+
+type AuthenticatedRequest = FastifyRequest & {
+    user: AuthenticatedUser;
+};
+
 declare module "fastify" {
     interface FastifyRequest {
-        user: { id: string; email: string } | null;
+        user: AuthenticatedUser | null;
     }
     interface FastifyInstance {
-        requireAuth: (req: FastifyRequest, reply: any) => Promise<any>;
+        requireAuth: (req: FastifyRequest, reply: any) => Promise<void>;
     }
 }
 
@@ -17,7 +27,6 @@ export const authPlugin = fp(
         app.decorateRequest("user", null);
 
         app.decorate("requireAuth", async (req) => {
-            app.log.info("Auth check");
             if (!req.user) {
                 throw app.httpErrors.unauthorized();
             }
@@ -25,16 +34,31 @@ export const authPlugin = fp(
 
         app.addHook("preHandler", async (req) => {
             const rawSessionCookie = req.cookies[SESSION_ID_COOKIE_KEY];
-            if (!rawSessionCookie) return;
+            if (!rawSessionCookie) {
+                req.log.debug("Session cookie not found in request")
+                return;
+            };
 
             const sessionCookie = req.unsignCookie(rawSessionCookie);
-            if (!sessionCookie) return;
+            if (!sessionCookie.valid) {
+                req.log.debug("Session cookie signature is invalid")
+                return
+            };
 
             const sessionId = sessionCookie.value;
-            if (!sessionId) return;
+            if (!sessionId) {
+                req.log.debug("Session cookie value is falsy")
+                return
+            };
 
             const row = await getUserBySessionId(app.sql, sessionId);
-            if (!row) return;
+            if (!row) {
+                // The session id from the cookie does not match 
+                // There is no valid session in the database that correspondes to a cookie
+                // 
+                req.log.debug("Session cookie provided but session not found, expired, or revoked")
+                return
+            };
 
             req.user = {
                 id: row.user_id,
@@ -48,12 +72,12 @@ export const authPlugin = fp(
 const getUserBySessionId = async (tx: postgres.Sql, sessionId: string) => {
     const [row] = await tx<{ user_id: string, email: string }[]>`
         select u.id as user_id, u.email
-        from user_sessions session
-        join users u on session.user_id = u.id
+        from user_sessions s
+        join users u on s.user_id = u.id
         where 
-            session.id = ${sessionId}::uuid
-            and session.expires_at > now()
-            and session.revoked_at is null
+            s.id = ${sessionId}::uuid
+            and s.expires_at > now()
+            and s.revoked_at is null
         limit 1
     `;
 

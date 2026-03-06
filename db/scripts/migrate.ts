@@ -14,7 +14,7 @@ if (!TEST_DATABASE_URL) {
 const MIGRATIONS_DIR = path.join(process.cwd(), "db/migrations");
 const MIGRATIONS_TABLE = "new_migrations";
 const shouldReset = process.argv.includes("--reset");
-const isVerbose = process.argv.includes("--verbose") || process.argv.includes("-v");
+let isVerbose = process.argv.includes("--verbose") || process.argv.includes("-v");
 
 const sql = postgres(TEST_DATABASE_URL, {
     ssl: false,
@@ -162,6 +162,8 @@ export default async function main() {
 if (import.meta.url.startsWith('file:')) {
     const modulePath = new URL(import.meta.url).pathname;
     if (process.argv[1] === modulePath) {
+        // force verbose mode when running directly
+        isVerbose = true;
         main();
     }
 }

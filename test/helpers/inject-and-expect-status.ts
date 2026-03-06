@@ -13,7 +13,7 @@ export async function injectAndExpectStatus(
     if (res.statusCode !== expectedStatus) {
         message += `Response status: ${res.statusCode} \n`;
         message += `Request: ${JSON.stringify(opts)} \n`;
-        message += `Response body: ${safeJson(res.body)}`;
+        message += `Response body: ${JSON.stringify(res.json())}`;
     }
 
     expect(res.statusCode, message).toBe(expectedStatus);
