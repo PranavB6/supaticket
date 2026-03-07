@@ -28,7 +28,5 @@ describe("Users API", () => {
 
         expect(response.statusCode).toBe(201);
     });
-
-
 });
 

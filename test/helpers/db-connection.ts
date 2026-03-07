@@ -38,7 +38,6 @@ export async function closeTestDatabaseConnection() {
 
 
 function assertSafeTestDatabaseUrl(urlString: string) {
-
     const safeHosts = ["localhost", "127.0.0.1"];
 
     const url = new URL(urlString);

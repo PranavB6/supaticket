@@ -17,9 +17,8 @@ afterAll(async () => {
     await app.close();
 });
 
-describe("Create Tickets", () => {
-
-    it("creates a ticket", async () => {
+describe("Delete Tickets", () => {
+    it("deletes a ticket", async () => {
         const title = "Test ticket";
         const description = "Test description";
         const priority = 3;
@@ -27,7 +26,7 @@ describe("Create Tickets", () => {
         const sql = app.sql;
         const { user, cookie } = await createAuthenticatedTestUser(app, sql);
 
-        const response = await injectAndExpectStatus(app, {
+        const createResponse = await injectAndExpectStatus(app, {
             method: "POST",
             url: "/api/tickets",
             headers: {
@@ -38,29 +37,25 @@ describe("Create Tickets", () => {
                 description,
                 priority,
             },
-
         }, 201);
 
-        const responseBody = response.json();
+        const createdTicket = createResponse.json();
 
-        expect(responseBody.title).toBe(title);
-        expect(responseBody.description).toBe(description);
-        expect(responseBody.priority).toBe(priority);
-        expect(responseBody.createdBy).toBe(user.id);
-        expect(responseBody.id).toBeDefined();
-
-    });
-
-    it("rejects unauthenticated ticket creation", async () => {
         await injectAndExpectStatus(app, {
-            method: "POST",
-            url: "/api/tickets",
-            body: {
-                title: "Test ticket",
-                description: "Test description",
-                priority: 3,
-            }
-        }, 401);
+            method: "DELETE",
+            url: `/api/tickets/${createdTicket.id}`,
+            headers: {
+                cookie: cookie
+            },
+        }, 204);
+
+        const getResponse = await injectAndExpectStatus(app, {
+            method: "GET",
+            url: `/api/tickets/${createdTicket.id}`,
+            headers: {
+                cookie: cookie
+            },
+        }, 404);
     });
 });
 

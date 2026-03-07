@@ -190,6 +190,8 @@ const listTickets = async (tx: postgres.Sql, options: Static<typeof ListTicketsQ
 
     const conditions: any[] = [];
 
+    conditions.push(tx`deleted_at is null`);
+
     if (options.status) {
         conditions.push(tx`status = ${options.status}`);
     }
@@ -223,6 +225,7 @@ const getTicketById = async (tx: postgres.Sql, ticketId: string) => {
         select *
         from tickets
         where id = ${ticketId}
+        and deleted_at is null
         limit 1;
     `;
 
@@ -234,6 +237,7 @@ const selectTicketForUpdate = async (tx: postgres.Sql, ticketId: string) => {
         select *
         from tickets
         where id = ${ticketId}
+        and deleted_at is null
         limit 1
         for update;
     `;
@@ -289,6 +293,7 @@ const updateTicket = async (tx: postgres.Sql, ticketId: string, data: TicketUpda
             end,
             updated_at = now()
         where id = ${ticketId}
+        and deleted_at is null
         returning *;
     `;
 
@@ -297,7 +302,8 @@ const updateTicket = async (tx: postgres.Sql, ticketId: string, data: TicketUpda
 
 const deleteTicket = async (tx: postgres.Sql, ticketId: string) => {
     const rows = await tx`
-        delete from tickets
+        update tickets
+        set deleted_at = now()
         where id = ${ticketId}
         returning *;
     `;
