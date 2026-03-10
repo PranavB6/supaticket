@@ -11,6 +11,7 @@ const EnvSchema = z.object({
     LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
     TEST_DATABASE_URL: z.string().min(1).optional(),
     TEST_DEBUG_LOGS: z.stringbool().default(false),
+    TEST_USE_WORKER_DATABASES: z.stringbool().optional().default(true),
 });
 
 export type AppConfig = z.infer<typeof EnvSchema>;

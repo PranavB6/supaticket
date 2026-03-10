@@ -1,3 +1,4 @@
+import type postgres from "postgres";
 import { buildApp } from "../../src/app.js";
 import { loadConfig } from "../../src/config.js";
 import { getTestDatabaseConnection } from "./db-connection.js";
@@ -5,11 +6,12 @@ import { getTestDatabaseConnection } from "./db-connection.js";
 const config = loadConfig(process.env)
 
 
-export async function buildTestApp(overrides = {}) {
+
+export async function buildTestApp(overrides: { sql?: postgres.Sql } = {}) {
     const app = buildApp({
         logger: loggerOptions(),
         db: {
-            sql: getTestDatabaseConnection(),
+            sql: overrides.sql ?? getTestDatabaseConnection(),
             disconnectOnClose: false,
         },
         ...overrides,

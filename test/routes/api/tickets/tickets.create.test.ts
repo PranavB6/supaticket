@@ -1,10 +1,10 @@
-import { describe, it, beforeAll, afterAll, expect } from "vitest";
+import { describe, it, beforeAll, afterAll, expect, beforeEach } from "vitest";
 import { buildTestApp } from "../../../../test/helpers/build-test-app.js";
-// import { getTestDatabaseConnection } from "../../../helpers/db-connection.js";
 import type { FastifyInstance } from "fastify";
 import { injectAndExpectStatus } from "../../../helpers/inject-and-expect-status.js";
 
 import { createAuthenticatedTestUser } from "../../../helpers/factories.js";
+import { resetTestDatabaseData } from "../../../helpers/db-connection.js";
 
 let app: FastifyInstance;
 
@@ -13,9 +13,15 @@ beforeAll(async () => {
     await app.ready();
 });
 
+beforeEach(async () => {
+    await resetTestDatabaseData(app.sql);
+});
+
 afterAll(async () => {
     await app.close();
 });
+
+
 
 describe("Create Tickets", () => {
 
@@ -24,8 +30,7 @@ describe("Create Tickets", () => {
         const description = "Test description";
         const priority = 3;
 
-        const sql = app.sql;
-        const { user, cookie } = await createAuthenticatedTestUser(app, sql);
+        const { user, cookie } = await createAuthenticatedTestUser(app, app.sql);
 
         const response = await injectAndExpectStatus(app, {
             method: "POST",
@@ -48,6 +53,7 @@ describe("Create Tickets", () => {
         expect(responseBody.priority).toBe(priority);
         expect(responseBody.createdBy).toBe(user.id);
         expect(responseBody.id).toBeDefined();
+
 
     });
 

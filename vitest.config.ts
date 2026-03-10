@@ -9,12 +9,7 @@ export default defineConfig({
         },
         include: ['test/**/*.test.ts'],
         setupFiles: ['./test/vitest.setup.ts'],
-        globalSetup: ['./db/scripts/migrate.ts'],
-        poolOptions: {
-            threads: {
-                singleThread: true,
-            },
-        },
+        globalSetup: ['./test/global-setup.ts'],
     }
 });
 
