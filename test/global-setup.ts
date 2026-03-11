@@ -8,6 +8,8 @@ export default async function () {
 
     if (!config.TEST_USE_WORKER_DATABASES && databaseUrl) {
         console.log("\n🚀 Running one-time migrations on shared database...");
+        console.log("⚠️  Ensure vitest threads are set to false and/or max workers is set to 1 as this is a shared database");
+
         await migrate({
             databaseUrl,
             shouldCreateDb: true,
